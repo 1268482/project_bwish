@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Birthday Antigravity</title>
+    <meta name="description" content="A magical birthday countdown calendar." />
+    <link rel="stylesheet" href="style.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- Full-screen starfield + nebula background canvas -->
+  <canvas id="bgCanvas" class="bg-canvas"></canvas>
+
+  <!-- Foreground particle network (molecules) canvas -->
+  <canvas id="particleCanvas" class="particle-canvas"></canvas>
+
+  <div id="app">
+    <!-- Landing / input screen -->
+    <section class="landing" id="landingScreen">
+      <h1>Welcome, <span id="userNameDisplay">Mano</span>!</h1>
+      <p>Enter your birthday to begin the magical time travel.</p>
+      <form id="birthForm" class="birth-form">
+        <label for="nameInput">Name</label>
+        <input type="text" id="nameInput" placeholder="Your name" value="Mano" required />
+        <label for="dateInput">Birthday</label>
+        <input type="date" id="dateInput" required />
+        <button type="button" id="startBtn">✨ Start Journey</button>
+      </form>
+    </section>
+
+    <!-- Calendar / animation screen -->
+    <section class="calendar-section hidden" id="calendarScreen">
+      <div class="calendar-header-wrapper">
+        <h2 id="todayHeader"></h2>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="muteBtn" class="mute-btn">🔊 Sound On</button>
+          <button type="button" id="abortBtn" class="abort-btn">✕ Restart</button>
+        </div>
+      </div>
+      <div class="calendar-relative-wrapper">
+        <div id="calendarContainer" class="calendar-container"></div>
+        <canvas id="confettiCanvas" class="confetti-canvas"></canvas>
+      </div>
+      <!-- Golden Hand Marker — uses the user's uploaded image -->
+      <div id="handMarker" class="hand-marker hidden">
+        <img src="magical_hand.png" alt="golden magical hand" class="hand-img" />
+      </div>
+      <div id="wishBox" class="wish-box hidden"></div>
+    </section>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────────────────
+    //  AUDIO ENGINE (Web Audio API Synthesizer)
+    // ─────────────────────────────────────────────────────────
+    const AudioEngine = {
+      ctx: null,
+      noiseBuffer: null,
+      isMuted: false,
+      activeOscillators: [],
+
+      init() {
+        if (this.ctx) return;
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+          this.createNoiseBuffer();
+        } catch (e) {
+          console.warn("Web Audio API not supported", e);
+        }
+      },
+
+      createNoiseBuffer() {
+        if (!this.ctx) return;
+        const bufferSize = this.ctx.sampleRate * 2; // 2 seconds
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        this.noiseBuffer = buffer;
+      },
+
+      stopAll() {
+        if (this.activeOscillators) {
+          this.activeOscillators.forEach(osc => {
+            try { osc.stop(); } catch (e) {}
+          });
+          this.activeOscillators = [];
+        }
+      },
+
+      toggleMute() {
+        this.isMuted = !this.isMuted;
+        const btn = document.getElementById('muteBtn');
+        if (btn) {
+          btn.textContent = this.isMuted ? '🔇 Sound Off' : '🔊 Sound On';
+          btn.classList.toggle('muted', this.isMuted);
+        }
+        if (!this.isMuted && this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        this.playClick();
+      },
+
+      playHover() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1000, now);
+
+          gain.gain.setValueAtTime(0.015, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.09);
+        } catch (e) {}
+      },
+
+      playClick() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, now); // C5
+          osc.frequency.exponentialRampToValueAtTime(150, now + 0.12);
+
+          gain.gain.setValueAtTime(0.07, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.13);
+        } catch (e) {}
+      },
+
+      playStart() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50]; // C Major scale arpeggio
+          notes.forEach((freq, index) => {
+            const timeOffset = index * 0.06;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + timeOffset);
+
+            gain.gain.setValueAtTime(0, now + timeOffset);
+            gain.gain.linearRampToValueAtTime(0.05, now + timeOffset + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + timeOffset + 0.35);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + timeOffset);
+            osc.stop(now + timeOffset + 0.40);
+          });
+        } catch (e) {}
+      },
+
+      playGrab() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(160, now);
+          osc.frequency.exponentialRampToValueAtTime(280, now + 0.12);
+
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.17);
+        } catch (e) {}
+      },
+
+      playPeel() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+
+          // 1. Noise whoosh (simulates page tear/peel)
+          if (this.noiseBuffer) {
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
+            
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.Q.setValueAtTime(2.5, now);
+            filter.frequency.setValueAtTime(1200, now);
+            filter.frequency.exponentialRampToValueAtTime(220, now + 1.2);
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.05, now + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start(now);
+            noise.stop(now + 1.3);
+          }
+
+          // 2. Lovely soft musical sweep underneath
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.exponentialRampToValueAtTime(180, now + 1.1);
+
+          gain.gain.setValueAtTime(0.02, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 1.3);
+        } catch (e) {}
+      },
+
+      playWish() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          
+          // Ascending lovely pentatonic scale chord sweep
+          const scale = [
+            261.63, 293.66, 329.63, 392.00, 440.00, // octave 4
+            523.25, 587.33, 659.25, 783.99, 880.00, // octave 5
+            1046.50, 1174.66, 1318.51, 1567.98 // octave 6
+          ];
+
+          scale.forEach((freq, index) => {
+            const timeOffset = index * 0.08;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            // Alternating oscillators for rich harmonic resonance
+            osc.type = (index % 2 === 0) ? 'sine' : 'triangle';
+            osc.frequency.setValueAtTime(freq, now + timeOffset);
+            
+            // Gentle LFO tremolo
+            const lfo = this.ctx.createOscillator();
+            const lfoGain = this.ctx.createGain();
+            lfo.frequency.setValueAtTime(5.5, now + timeOffset);
+            lfoGain.gain.setValueAtTime(1.2, now + timeOffset);
+            lfo.connect(lfoGain);
+            lfoGain.connect(osc.frequency);
+            
+            gain.gain.setValueAtTime(0, now + timeOffset);
+            gain.gain.linearRampToValueAtTime(0.06, now + timeOffset + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + timeOffset + 1.5);
+            
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            
+            lfo.start(now + timeOffset);
+            osc.start(now + timeOffset);
+            lfo.stop(now + timeOffset + 1.6);
+            osc.stop(now + timeOffset + 1.6);
+          });
+        } catch (e) {}
+      },
+
+      synthesizeMeow(freq, startTime, duration) {
+        if (!this.ctx) return;
+        try {
+          const osc1 = this.ctx.createOscillator();
+          const osc2 = this.ctx.createOscillator();
+          const oscSine = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const sineGain = this.ctx.createGain();
+          const filter = this.ctx.createBiquadFilter();
+
+          osc1.type = 'triangle';
+          osc2.type = 'sawtooth';
+          oscSine.type = 'sine';
+
+          const bendTime = duration * 0.15;
+
+          // Pitch sweep (me-oww slide) using standard linearRampToValueAtTime
+          osc1.frequency.setValueAtTime(freq * 0.85, startTime);
+          osc1.frequency.linearRampToValueAtTime(freq * 1.15, startTime + bendTime);
+          osc1.frequency.linearRampToValueAtTime(freq * 0.9, startTime + duration);
+
+          osc2.frequency.setValueAtTime(freq * 1.7, startTime);
+          osc2.frequency.linearRampToValueAtTime(freq * 2.3, startTime + bendTime);
+          osc2.frequency.linearRampToValueAtTime(freq * 1.8, startTime + duration);
+
+          oscSine.frequency.setValueAtTime(freq * 0.85, startTime);
+          oscSine.frequency.linearRampToValueAtTime(freq * 1.15, startTime + bendTime);
+          oscSine.frequency.linearRampToValueAtTime(freq * 0.9, startTime + duration);
+
+          // Vocal tract filter (Sweeping formant filter for nasal meow)
+          filter.type = 'bandpass';
+          filter.Q.setValueAtTime(3.5, startTime);
+          filter.frequency.setValueAtTime(2200, startTime);
+          filter.frequency.exponentialRampToValueAtTime(750, startTime + duration);
+
+          // Volume Envelopes
+          gain.gain.setValueAtTime(0, startTime);
+          gain.gain.linearRampToValueAtTime(0.09, startTime + duration * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+          sineGain.gain.setValueAtTime(0, startTime);
+          sineGain.gain.linearRampToValueAtTime(0.06, startTime + duration * 0.12);
+          sineGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+          osc1.connect(filter);
+          osc2.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          oscSine.connect(sineGain);
+          sineGain.connect(this.ctx.destination);
+
+          // Track active oscillators for cancellation
+          this.activeOscillators.push(osc1, osc2, oscSine);
+
+          osc1.start(startTime);
+          osc2.start(startTime);
+          oscSine.start(startTime);
+
+          osc1.stop(startTime + duration + 0.05);
+          osc2.stop(startTime + duration + 0.05);
+          oscSine.stop(startTime + duration + 0.05);
+        } catch (e) {}
+      },
+
+      playCatBirthday() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+          const now = this.ctx.currentTime;
+          const bpm = 115;
+          const beat = 60 / bpm; // Beat length (~0.52 seconds)
+
+          // Happy Birthday song notes: frequency (Hz), duration (beats)
+          const notes = [
+            { f: 261.63, d: 0.75 }, { f: 261.63, d: 0.25 }, { f: 293.66, d: 1.0 }, { f: 261.63, d: 1.0 }, { f: 349.23, d: 1.0 }, { f: 329.63, d: 2.0 }, // C4 C4 D4 C4 F4 E4
+            { f: 261.63, d: 0.75 }, { f: 261.63, d: 0.25 }, { f: 293.66, d: 1.0 }, { f: 261.63, d: 1.0 }, { f: 392.00, d: 1.0 }, { f: 349.23, d: 2.0 }, // C4 C4 D4 C4 G4 F4
+            { f: 261.63, d: 0.75 }, { f: 261.63, d: 0.25 }, { f: 523.25, d: 1.0 }, { f: 440.00, d: 1.0 }, { f: 349.23, d: 1.0 }, { f: 329.63, d: 1.0 }, { f: 293.66, d: 2.0 }, // C4 C4 C5 A4 F4 E4 D4
+            { f: 466.16, d: 0.75 }, { f: 466.16, d: 0.25 }, { f: 440.00, d: 1.0 }, { f: 349.23, d: 1.0 }, { f: 392.00, d: 1.0 }, { f: 349.23, d: 2.0 }  // Bb4 Bb4 A4 F4 G4 F4
+          ];
+
+          let time = now + 0.1;
+          notes.forEach(note => {
+            const durationSec = note.d * beat;
+            this.synthesizeMeow(note.f, time, durationSec);
+            time += durationSec + 0.08;
+          });
+        } catch (e) {}
+      }
+    };
+
+    // ─────────────────────────────────────────────────────────
+    //  BACKGROUND ENGINE  — starfield + nebula orbs + grid
+    // ─────────────────────────────────────────────────────────
+    function startBgEngine() {
+      const canvas = document.getElementById('bgCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      function resize() {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      // Stars
+      const stars = Array.from({ length: 200 }, () => ({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        r: Math.random() * 1.4 + 0.3,
+        alpha: Math.random(),
+        speed: Math.random() * 0.008 + 0.003,
+        twinkleDir: Math.random() < 0.5 ? 1 : -1
+      }));
+
+      // Floating nebula orbs (electric blue & laser red)
+      const orbs = [
+        { x: 0.12, y: 0.25, r: 280, color: 'rgba(0,180,255,0.07)',  speed: 0.00012, angle: 0   },
+        { x: 0.88, y: 0.70, r: 320, color: 'rgba(255,20,60,0.06)',   speed: 0.00009, angle: 1.5 },
+        { x: 0.5,  y: 0.05, r: 200, color: 'rgba(0,255,150,0.05)',   speed: 0.00015, angle: 3   },
+        { x: 0.05, y: 0.80, r: 260, color: 'rgba(140,0,255,0.05)',   speed: 0.0001,  angle: 0.8 },
+        { x: 0.92, y: 0.15, r: 240, color: 'rgba(0,210,255,0.06)',   speed: 0.00013, angle: 2.2 },
+        { x: 0.6,  y: 0.90, r: 300, color: 'rgba(255,0,80,0.05)',    speed: 0.00008, angle: 4.5 },
+      ];
+
+      let tick = 0;
+      function draw() {
+        tick++;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw nebula orbs with slow drift
+        orbs.forEach(o => {
+          o.angle += o.speed * 60;
+          const cx = (o.x + Math.sin(o.angle) * 0.08) * canvas.width;
+          const cy = (o.y + Math.cos(o.angle * 0.7) * 0.08) * canvas.height;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, o.r);
+          grad.addColorStop(0,   o.color);
+          grad.addColorStop(0.6, o.color.replace(/[\d.]+\)$/, '0.02)'));
+          grad.addColorStop(1,   'transparent');
+          ctx.beginPath();
+          ctx.arc(cx, cy, o.r, 0, Math.PI * 2);
+          ctx.fillStyle = grad;
+          ctx.fill();
+        });
+
+        // Draw twinkling stars
+        stars.forEach(s => {
+          s.alpha += s.speed * s.twinkleDir;
+          if (s.alpha >= 1) { s.twinkleDir = -1; }
+          if (s.alpha <= 0.05) { s.twinkleDir = 1; }
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${s.alpha.toFixed(2)})`;
+          ctx.fill();
+        });
+
+        requestAnimationFrame(draw);
+      }
+      draw();
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  FOREGROUND PARTICLE NETWORK  — electric blue + laser red
+    // ─────────────────────────────────────────────────────────
+    window.timeTravelMode = false;
+
+    function startParticles() {
+      const canvas = document.getElementById('particleCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+
+      function resize() {
+        canvas.width  = window.innerWidth  * dpr;
+        canvas.height = window.innerHeight * dpr;
+        ctx.scale(dpr, dpr);
+      }
+      resize();
+      window.addEventListener('resize', () => { resize(); });
+      window.particlesResize = resize;
+
+      const standardColors = [
+        'rgba(0,210,255,0.45)',   // Electric Blue
+        'rgba(255,20,60,0.40)',   // Laser Red
+        'rgba(0,210,255,0.30)',
+        'rgba(255,20,60,0.30)',
+        'rgba(0,255,150,0.25)',   // accent mint
+      ];
+      const warpColors = ['#00d2ff','#ff143c','#00ff96','#ff4466','#00cfff'];
+
+      const maxP = 70;
+      const particles = Array.from({ length: maxP }, createParticle);
+
+      function createParticle() {
+        const size = Math.random() * 2.2 + 1;
+        return {
+          x: Math.random() * window.innerWidth,
+          y: Math.random() * window.innerHeight,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: (Math.random() - 0.5) * 0.4,
+          size,
+          color: standardColors[Math.floor(Math.random() * standardColors.length)],
+          warpColor: warpColors[Math.floor(Math.random() * warpColors.length)],
+        };
+      }
+
+      function animate() {
+        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+        if (!window.timeTravelMode) {
+          // Connection lines
+          for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+              const dx = particles[i].x - particles[j].x;
+              const dy = particles[i].y - particles[j].y;
+              const dist = Math.hypot(dx, dy);
+              if (dist < 110) {
+                const alpha = (1 - dist / 110) * 0.12;
+                ctx.beginPath();
+                ctx.moveTo(particles[i].x, particles[i].y);
+                ctx.lineTo(particles[j].x, particles[j].y);
+                ctx.strokeStyle = `rgba(0,180,255,${alpha})`;
+                ctx.lineWidth = 0.6;
+                ctx.stroke();
+              }
+            }
+          }
+        }
+
+        particles.forEach(p => {
+          if (window.timeTravelMode) {
+            p.y -= 9;
+            if (p.y < -30) {
+              p.y = window.innerHeight + 10;
+              p.x = Math.random() * window.innerWidth;
+            }
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x, p.y + 18);
+            ctx.strokeStyle = p.warpColor;
+            ctx.lineWidth = p.size * 0.9;
+            ctx.stroke();
+          } else {
+            p.x += p.vx;
+            p.y += p.vy;
+            if (p.x < 0 || p.x > window.innerWidth)  p.vx *= -1;
+            if (p.y < 0 || p.y > window.innerHeight)  p.vy *= -1;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+
+            // halo glow
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = p.color.replace(/[\d.]+\)$/, '0.07)');
+            ctx.fill();
+          }
+        });
+
+        requestAnimationFrame(animate);
+      }
+      animate();
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  CONFETTI ENGINE
+    // ─────────────────────────────────────────────────────────
+    let confettiActive = false;
+    window.confettiParticles = [];
+
+    function startConfettiEngine(centerX, centerY) {
+      const canvas = document.getElementById('confettiCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = canvas.offsetWidth  * dpr;
+      canvas.height = canvas.offsetHeight * dpr;
+      ctx.scale(dpr, dpr);
+
+      const colors = ['#00d2ff','#ff143c','#ffda79','#ff9a9e','#78ffd6','#ff1493'];
+      window.confettiParticles = Array.from({ length: 100 }, () => {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5 + 3;
+        return {
+          x: centerX, y: centerY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - Math.random() * 2,
+          size: Math.random() * 7 + 4,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          alpha: 1,
+          decay: Math.random() * 0.02 + 0.012,
+        };
+      });
+
+      if (confettiActive) return;
+      confettiActive = true;
+
+      function loop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let alive = false;
+        for (let i = window.confettiParticles.length - 1; i >= 0; i--) {
+          const c = window.confettiParticles[i];
+          c.x += c.vx; c.y += c.vy; c.vy += 0.13; c.alpha -= c.decay;
+          if (c.alpha <= 0) { window.confettiParticles.splice(i, 1); continue; }
+          alive = true;
+          ctx.save();
+          ctx.globalAlpha = c.alpha;
+          ctx.fillStyle   = c.color;
+          ctx.fillRect(c.x, c.y, c.size, c.size);
+          ctx.restore();
+        }
+        if (alive) requestAnimationFrame(loop);
+        else { ctx.clearRect(0, 0, canvas.width, canvas.height); confettiActive = false; }
+      }
+      loop();
+    }
+
+    function spawnConfetti() {
+      const cell   = document.querySelector('.day-cell.birthday');
+      const canvas = document.getElementById('confettiCanvas');
+      if (!cell || !canvas) return;
+      const cr = cell.getBoundingClientRect();
+      const ar = canvas.getBoundingClientRect();
+      startConfettiEngine(cr.left + cr.width / 2 - ar.left, cr.top + cr.height / 2 - ar.top);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  SPARKLE TRAIL
+    // ─────────────────────────────────────────────────────────
+    function spawnTrailSparkle(x, y) {
+      const container = document.getElementById('calendarScreen');
+      if (!container) return;
+      const spark = document.createElement('div');
+      spark.className = 'trail-sparkle';
+      const size = Math.random() * 11 + 7;
+      spark.style.left   = `${x + (Math.random() - 0.5) * 18}px`;
+      spark.style.top    = `${y + (Math.random() - 0.5) * 18}px`;
+      spark.style.width  = `${size}px`;
+      spark.style.height = `${size}px`;
+      spark.innerHTML = `<svg viewBox="0 0 24 24" width="100%" height="100%"><polygon points="12,0 15,9 24,12 15,15 12,24 9,15 0,12 9,9" fill="#ffd700"/></svg>`;
+      container.appendChild(spark);
+      setTimeout(() => spark.remove(), 800);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  UTILS
+    // ─────────────────────────────────────────────────────────
+    function getToday() {
+      const n = new Date();
+      return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    }
+    function daysInMonth(year, month) {
+      return new Date(year, month + 1, 0).getDate();
+    }
+
+    function renderCalendar({ containerId, year, month, today, birthday }) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      const totalDays    = daysInMonth(year, month);
+      const firstWeekday = new Date(year, month, 1).getDay();
+      for (let i = 0; i < firstWeekday; i++) {
+        const e = document.createElement('div');
+        e.className = 'day-cell empty';
+        container.appendChild(e);
+      }
+      const map = new Map();
+      for (let d = 1; d <= totalDays; d++) {
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        cell.textContent = d;
+        if (d === today)    cell.classList.add('today');
+        if (d === birthday) cell.classList.add('birthday');
+        
+        // Soft hover chime for each day cell
+        cell.addEventListener('mouseenter', () => AudioEngine.playHover());
+
+        container.appendChild(cell);
+        map.set(d, cell);
+      }
+      return map;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  APP STATE
+    // ─────────────────────────────────────────────────────────
+    window.appState = { userName: 'Mano', animationSession: 0, currentHandPos: null };
+
+    function getCenter(el) {
+      const parent   = document.getElementById('calendarScreen');
+      const elRect   = el.getBoundingClientRect();
+      const pRect    = parent.getBoundingClientRect();
+      return { x: elRect.left + elRect.width  / 2 - pRect.left,
+               y: elRect.top  + elRect.height / 2 - pRect.top };
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  HAND ANIMATION ENGINE
+    // ─────────────────────────────────────────────────────────
+    let activeHandAnimFrame = null;
+
+    function animateHand(startPos, endPos, duration, onComplete) {
+      const hand = document.getElementById('handMarker');
+      if (!hand) return;
+      hand.classList.remove('hidden', 'floating');
+      const dx    = endPos.x - startPos.x;
+      const dy    = endPos.y - startPos.y;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const t0    = performance.now();
+      if (activeHandAnimFrame) cancelAnimationFrame(activeHandAnimFrame);
+
+      function step(now) {
+        const t    = Math.min((now - t0) / duration, 1);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        const curX = startPos.x + dx * ease;
+        const curY = startPos.y + dy * ease;
+        hand.style.left      = `${curX}px`;
+        hand.style.top       = `${curY}px`;
+        hand.style.transform = `translate(-35%, -15%) rotate(${angle - 90}deg)`;
+        if (Math.random() < 0.45) spawnTrailSparkle(curX, curY);
+        if (t < 1) {
+          activeHandAnimFrame = requestAnimationFrame(step);
+        } else {
+          hand.style.transform = 'translate(-35%, -15%)';
+          hand.classList.add('floating');
+          window.appState.currentHandPos = endPos;
+          if (onComplete) onComplete();
+        }
+      }
+      activeHandAnimFrame = requestAnimationFrame(step);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  WISH BOX
+    // ─────────────────────────────────────────────────────────
+    function showWish() {
+      const wishBox = document.getElementById('wishBox');
+      if (!wishBox) return;
+      const name = window.appState.userName || 'Mano';
+      wishBox.innerHTML = `
+        <div class="wish-card">
+          <h2 class="wish-title">Happy Birthday, ${name}! 🎂✨</h2>
+          <p class="wish-text">Your magical time-travel journey is complete.<br>May your year be filled with wonder and light!</p>
+          <button type="button" class="restart-btn" id="restartBtnBday">Time Travel Again</button>
+        </div>`;
+      wishBox.classList.remove('hidden');
+      
+      // Play Happy Birthday (Cat meow version)!
+      AudioEngine.playCatBirthday();
+      
+      const rstBtn = document.getElementById('restartBtnBday');
+      rstBtn.addEventListener('mouseenter', () => AudioEngine.playHover());
+      rstBtn.addEventListener('click', () => {
+        AudioEngine.playClick();
+        restartJourney();
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  RESTART
+    // ─────────────────────────────────────────────────────────
+    function restartJourney() {
+      AudioEngine.stopAll();
+      window.appState.animationSession++;
+      window.timeTravelMode = false;
+      window.confettiParticles = [];
+      if (activeHandAnimFrame) cancelAnimationFrame(activeHandAnimFrame);
+      document.getElementById('calendarScreen').classList.add('hidden');
+      document.getElementById('landingScreen').classList.remove('hidden');
+      document.getElementById('wishBox').classList.add('hidden');
+      const hand = document.getElementById('handMarker');
+      if (hand) { hand.classList.add('hidden'); hand.style.transform = 'translate(-35%, -15%)'; }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  INIT FORM
+    // ─────────────────────────────────────────────────────────
+    const MONTH_NAMES = ['January','February','March','April','May','June',
+                         'July','August','September','October','November','December'];
+
+    function initForm() {
+      const nameInput       = document.getElementById('nameInput');
+      const dateInput       = document.getElementById('dateInput');
+      const userNameDisplay = document.getElementById('userNameDisplay');
+      const startBtn        = document.getElementById('startBtn');
+      const abortBtn        = document.getElementById('abortBtn');
+
+      // Prime Web Audio on interaction to comply with browser safety rules
+      const primeAudio = () => AudioEngine.init();
+      nameInput.addEventListener('focus', primeAudio);
+      dateInput.addEventListener('focus', primeAudio);
+      nameInput.addEventListener('mouseenter', () => AudioEngine.playHover());
+      dateInput.addEventListener('mouseenter', () => AudioEngine.playHover());
+      startBtn.addEventListener('mouseenter', () => AudioEngine.playHover());
+      abortBtn.addEventListener('mouseenter', () => AudioEngine.playHover());
+
+      // Sound toggle button click and hover listeners
+      const muteBtn = document.getElementById('muteBtn');
+      if (muteBtn) {
+        muteBtn.addEventListener('click', () => AudioEngine.toggleMute());
+        muteBtn.addEventListener('mouseenter', () => AudioEngine.playHover());
+      }
+
+
+
+      nameInput.addEventListener('input', () => {
+        const val = nameInput.value.trim() || 'Mano';
+        userNameDisplay.textContent = val;
+        window.appState.userName = val;
+      });
+
+      abortBtn.addEventListener('click', () => {
+        AudioEngine.playClick();
+        restartJourney();
+      });
+
+      startBtn.addEventListener('click', () => {
+        AudioEngine.playStart();
+        const name    = nameInput.value.trim() || 'Mano';
+        const dateStr = dateInput.value;
+        if (!dateStr) { alert('Please pick a birthday date.'); return; }
+
+        const bdayInput = new Date(dateStr);
+        const today     = getToday();
+        let targetYear  = today.getFullYear();
+        if (new Date(targetYear, bdayInput.getMonth(), bdayInput.getDate()) < today) targetYear++;
+        const targetBirthday = new Date(targetYear, bdayInput.getMonth(), bdayInput.getDate());
+
+        window.appState.userName     = name;
+        window.appState.birthdayDate = targetBirthday;
+        window.appState.animationSession++;
+        const currentSession = window.appState.animationSession;
+
+        document.getElementById('landingScreen').classList.add('hidden');
+        document.getElementById('calendarScreen').classList.remove('hidden');
+        document.getElementById('wishBox').classList.add('hidden');
+        if (window.particlesResize) window.particlesResize();
+
+        // Build month list
+        const months = [];
+        let cur = new Date(today.getFullYear(), today.getMonth(), 1);
+        const end = new Date(targetBirthday.getFullYear(), targetBirthday.getMonth(), 1);
+        while (cur <= end) {
+          months.push({ year: cur.getFullYear(), month: cur.getMonth() });
+          cur.setMonth(cur.getMonth() + 1);
+        }
+
+        // ── MAIN SEQUENCE ──────────────────────────────────
+        // Timing constants — HAND and PAGE PEEL are perfectly in sync
+        const GRAB_DURATION  = 900;   // hand travels to bottom-right corner
+        const PULL_DURATION  = 1400;  // hand pulls left  ← matches CSS pagePeel duration
+        const PEEL_CSS_MS    = 1400;  // pagePeel animation duration (must equal PULL_DURATION)
+        const PAUSE_AFTER    = 500;   // brief pause before next month
+
+        const renderNext = idx => {
+          if (currentSession !== window.appState.animationSession) return;
+          if (idx >= months.length) {
+            // Animate hand to birthday cell, confetti, wish
+            const bdCell = document.querySelector('.day-cell.birthday');
+            if (bdCell) {
+              const endPos = getCenter(bdCell);
+              animateHand(window.appState.currentHandPos, endPos, 1600, () => {
+                spawnConfetti();
+                AudioEngine.playWish();
+                setTimeout(() => {
+                  if (currentSession === window.appState.animationSession) showWish();
+                }, 900);
+              });
+            } else {
+              showWish();
+            }
+            return;
+          }
+
+          const { year, month } = months[idx];
+          const opts = {
+            containerId: 'calendarContainer',
+            year, month,
+            today:    (year === today.getFullYear()           && month === today.getMonth())           ? today.getDate()           : null,
+            birthday: (year === targetBirthday.getFullYear()  && month === targetBirthday.getMonth())  ? targetBirthday.getDate()  : null,
+          };
+
+          // ── First month: just render, place hand, wait
+          if (idx === 0) {
+            renderCalendar(opts);
+            const hand = document.getElementById('handMarker');
+            const firstCell = document.querySelector('.day-cell.today') || document.querySelector('.day-cell:not(.empty)');
+            if (firstCell && hand) {
+              const startPos = getCenter(firstCell);
+              hand.classList.remove('hidden');
+              hand.classList.add('floating');
+              hand.style.left      = `${startPos.x}px`;
+              hand.style.top       = `${startPos.y}px`;
+              hand.style.transform = 'translate(-35%, -15%)';
+              window.appState.currentHandPos = startPos;
+            }
+            document.getElementById('todayHeader').textContent = `${MONTH_NAMES[month]} ${year}`;
+            setTimeout(() => renderNext(idx + 1), 1800);
+            return;
+          }
+
+          // ── Subsequent months: hand grabs → peel → hand pulls left (synced)
+          const container    = document.getElementById('calendarContainer');
+          const cRect        = container.getBoundingClientRect();
+          const pRect        = document.getElementById('calendarScreen').getBoundingClientRect();
+          const hand         = document.getElementById('handMarker');
+
+          const grabPos = {
+            x: cRect.right  - pRect.left - 20,
+            y: cRect.bottom - pRect.top  - 20,
+          };
+          const pullPos = {
+            x: cRect.left - pRect.left - 60,
+            y: cRect.top  + cRect.height / 2 - pRect.top,
+          };
+
+          // Step 1: hand moves to grab corner
+          animateHand(window.appState.currentHandPos, grabPos, GRAB_DURATION, () => {
+            if (currentSession !== window.appState.animationSession) return;
+
+            AudioEngine.playGrab();
+
+            // Grab pose
+            hand.style.transform = 'translate(-35%, -15%) rotate(-30deg) scale(1.2)';
+
+            setTimeout(() => {
+              if (currentSession !== window.appState.animationSession) return;
+
+              // Step 2: activate warp
+              window.timeTravelMode = true;
+
+              // Step 3: clone current month as peeling overlay
+              const peelingPage = container.cloneNode(true);
+              peelingPage.id = '';
+              peelingPage.classList.add('peeling-page');
+              // Override animation duration to match hand pull
+              peelingPage.style.animationDuration = `${PEEL_CSS_MS}ms`;
+              container.parentNode.appendChild(peelingPage);
+
+              // Step 4: render new month immediately UNDER the peel
+              renderCalendar(opts);
+              document.getElementById('todayHeader').textContent = `${MONTH_NAMES[month]} ${year}`;
+
+              // Step 5: hand and peel move SIMULTANEOUSLY
+              AudioEngine.playPeel();
+              animateHand(grabPos, pullPos, PULL_DURATION, () => {
+                if (currentSession !== window.appState.animationSession) return;
+
+                // cleanup
+                if (peelingPage.parentNode) peelingPage.remove();
+                window.timeTravelMode = false;
+
+                const firstCell = document.querySelector('.day-cell.today') || document.querySelector('.day-cell:not(.empty)');
+                if (firstCell) window.appState.currentHandPos = getCenter(firstCell);
+
+                setTimeout(() => renderNext(idx + 1), PAUSE_AFTER);
+              });
+
+            }, 180);
+          });
+        };
+
+        renderNext(0);
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  BOOT
+    // ─────────────────────────────────────────────────────────
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { startBgEngine(); startParticles(); initForm(); });
+    } else {
+      startBgEngine(); startParticles(); initForm();
+    }
+  </script>
+</body>
+</html>
