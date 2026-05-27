@@ -43,7 +43,10 @@ function showWish() {
   const name = window.appState.userName || 'Friend';
   const today = new Date();
   const bday = window.appState.birthdayDate;
-  const diffTime = bday.setHours(0,0,0,0) - today.setHours(0,0,0,0);
+  // Use copies so setHours doesn't mutate the originals
+  const todayCopy = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const bdayCopy = new Date(bday.getFullYear(), bday.getMonth(), bday.getDate());
+  const diffTime = bdayCopy.getTime() - todayCopy.getTime();
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
   let message = '';
   if (diffDays === 0) {
@@ -52,8 +55,8 @@ function showWish() {
     message = `${name}, your birthday is in ${diffDays} day${diffDays === 1 ? '' : 's'}!`;
   } else {
     // birthday already passed this year – show next year's countdown
-    const nextYear = new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate());
-    const nextDiff = Math.round((nextYear - today) / (1000 * 60 * 60 * 24));
+    const nextYear = new Date(todayCopy.getFullYear() + 1, bdayCopy.getMonth(), bdayCopy.getDate());
+    const nextDiff = Math.round((nextYear - todayCopy) / (1000 * 60 * 60 * 24));
     message = `${name}, your birthday was ${-diffDays} day${-diffDays === 1 ? '' : 's'} ago. Next one in ${nextDiff} days!`;
   }
   wishBox.textContent = message;

@@ -16,6 +16,9 @@
   <!-- Foreground particle network (molecules) canvas -->
   <canvas id="particleCanvas" class="particle-canvas"></canvas>
 
+  <!-- Container for floating cartoon cats (in the background, behind the panel) -->
+  <div id="landingCatContainer" class="landing-cat-container"></div>
+
   <div id="app">
     <!-- Landing / input screen -->
     <section class="landing" id="landingScreen">
@@ -374,8 +377,57 @@
             this.synthesizeMeow(note.f, time, durationSec);
             time += durationSec + 0.08;
           });
+          const totalDuration = time - now;
+          setTimeout(() => { this.stopCatBgm(); }, totalDuration * 1000);
         } catch (e) {}
-      }
+      },
+    // ─────────────────────────────────────────────────────────
+    //  CAT BGM - background instrumental
+    playCatBgm() {
+        this.init();
+        if (this.isMuted || !this.ctx) return;
+        try {
+            const now = this.ctx.currentTime;
+            const bpm = 115;
+            const beat = 60 / bpm;
+            const chords = [
+                [{ f: 261.63, d: 2 }, { f: 329.63, d: 2 }, { f: 392.00, d: 2 }],
+                [{ f: 349.23, d: 2 }, { f: 440.00, d: 2 }, { f: 523.25, d: 2 }],
+                [{ f: 392.00, d: 2 }, { f: 493.88, d: 2 }, { f: 587.33, d: 2 }]
+            ];
+            const scheduleLoop = (startTime) => {
+                let time = startTime;
+                chords.forEach(chord => {
+                    chord.forEach(note => {
+                        // smoother sine tone instead of meow
+                        const osc = this.ctx.createOscillator();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(note.f, time);
+                        const gain = this.ctx.createGain();
+                        gain.gain.setValueAtTime(0.0001, time);
+                        gain.gain.linearRampToValueAtTime(0.03, time + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, time + note.d * beat);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(time);
+                        osc.stop(time + note.d * beat);
+                    });
+                    time += 2 * beat + 0.2;
+                });
+                // schedule next iteration
+                this.bgmTimer = setTimeout(() => scheduleLoop(time), (2 * beat + 0.2) * chords.length * 1000);
+            };
+            scheduleLoop(now);
+        } catch (e) {}
+    },
+    stopCatBgm() {
+        if (this.bgmTimer) {
+            clearTimeout(this.bgmTimer);
+            this.bgmTimer = null;
+        }
+        // Stop any active oscillators from the BGM
+        this.stopAll();
+    },
     };
 
     // ─────────────────────────────────────────────────────────
@@ -737,6 +789,7 @@
       wishBox.classList.remove('hidden');
       
       // Play Happy Birthday (Cat meow version)!
+      AudioEngine.playCatBgm();
       AudioEngine.playCatBirthday();
       
       const rstBtn = document.getElementById('restartBtnBday');
@@ -758,9 +811,127 @@
       if (activeHandAnimFrame) cancelAnimationFrame(activeHandAnimFrame);
       document.getElementById('calendarScreen').classList.add('hidden');
       document.getElementById('landingScreen').classList.remove('hidden');
+      document.getElementById('landingCatContainer').classList.remove('hidden');
       document.getElementById('wishBox').classList.add('hidden');
       const hand = document.getElementById('handMarker');
       if (hand) { hand.classList.add('hidden'); hand.style.transform = 'translate(-35%, -15%)'; }
+      initFloatingCats(); // Re-initialize the floating cats!
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  FLOATING CATS (LANDING SCREEN)
+    // ─────────────────────────────────────────────────────────
+    const CAT_TEMPLATES = [
+      // Template 1: Happy White Cat
+      `<svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+        <path d="M20 40 L10 15 L38 28 Z" fill="#FFCCD5" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M80 40 L90 15 L62 28 Z" fill="#FFCCD5" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M23 37 L16 20 L33 28 Z" fill="#FFB3C1" />
+        <path d="M77 37 L84 20 L67 28 Z" fill="#FFB3C1" />
+        <ellipse cx="50" cy="52" rx="38" ry="30" fill="#FFFFFF" stroke="#4A3B32" stroke-width="3" />
+        <circle cx="36" cy="48" r="4.5" fill="#4A3B32" />
+        <circle cx="64" cy="48" r="4.5" fill="#4A3B32" />
+        <circle cx="34" cy="46" r="1.5" fill="#FFFFFF" />
+        <circle cx="62" cy="46" r="1.5" fill="#FFFFFF" />
+        <ellipse cx="28" cy="54" rx="6" ry="3" fill="#FFB3C1" opacity="0.6" />
+        <ellipse cx="72" cy="54" rx="6" ry="3" fill="#FFB3C1" opacity="0.6" />
+        <path d="M50 52 L47 55 H53 Z" fill="#FF85A1" />
+        <path d="M45 58 Q50 61 50 58 Q50 61 55 58" fill="none" stroke="#4A3B32" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="16" y1="52" x2="5" y2="50" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="16" y1="57" x2="3" y2="58" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="84" y1="52" x2="95" y2="50" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="84" y1="57" x2="97" y2="58" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+      </svg>`,
+      // Template 2: Cute Orange Tabby
+      `<svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+        <path d="M20 40 L10 15 L38 28 Z" fill="#FF9F1C" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M80 40 L90 15 L62 28 Z" fill="#FF9F1C" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M23 37 L16 20 L33 28 Z" fill="#FFCCD5" />
+        <path d="M77 37 L84 20 L67 28 Z" fill="#FFCCD5" />
+        <ellipse cx="50" cy="52" rx="38" ry="30" fill="#FFBF69" stroke="#4A3B32" stroke-width="3" />
+        <path d="M50 22 L50 28 M44 23 L45 28 M56 23 L55 28" stroke="#FF9F1C" stroke-width="3" stroke-linecap="round" />
+        <path d="M31 49 Q36 44 41 49" fill="none" stroke="#4A3B32" stroke-width="3" stroke-linecap="round" />
+        <circle cx="64" cy="48" r="4.5" fill="#4A3B32" />
+        <circle cx="62" cy="46" r="1.5" fill="#FFFFFF" />
+        <ellipse cx="28" cy="54" rx="6" ry="3" fill="#FF85A1" opacity="0.6" />
+        <ellipse cx="72" cy="54" rx="6" ry="3" fill="#FF85A1" opacity="0.6" />
+        <path d="M50 52 L47 55 H53 Z" fill="#FF85A1" />
+        <path d="M45 58 Q50 61 50 58 Q50 61 55 58" fill="none" stroke="#4A3B32" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="16" y1="52" x2="5" y2="50" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="16" y1="57" x2="3" y2="58" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="84" y1="52" x2="95" y2="50" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="84" y1="57" x2="97" y2="58" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+      </svg>`,
+      // Template 3: Cute Gray Cat (Heart Eyes)
+      `<svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+        <path d="M20 40 L10 15 L38 28 Z" fill="#A8DADC" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M80 40 L90 15 L62 28 Z" fill="#A8DADC" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M23 37 L16 20 L33 28 Z" fill="#F1FAEE" />
+        <path d="M77 37 L84 20 L67 28 Z" fill="#F1FAEE" />
+        <ellipse cx="50" cy="52" rx="38" ry="30" fill="#F1FAEE" stroke="#4A3B32" stroke-width="3" />
+        <path d="M12 52 L22 52 M13 56 L20 56 M88 52 L78 52 M87 56 L80 56" stroke="#A8DADC" stroke-width="3" stroke-linecap="round" />
+        <path d="M 28 45 A 3 3 0 0 1 34 45 A 3 3 0 0 1 40 45 Q 40 49 34 53 Q 28 49 28 45 Z" fill="#E63946" stroke="#4A3B32" stroke-width="1.5" />
+        <path d="M 60 45 A 3 3 0 0 1 66 45 A 3 3 0 0 1 72 45 Q 72 49 66 53 Q 60 49 60 45 Z" fill="#E63946" stroke="#4A3B32" stroke-width="1.5" />
+        <ellipse cx="28" cy="56" rx="5" ry="2.5" fill="#E63946" opacity="0.4" />
+        <ellipse cx="72" cy="56" rx="5" ry="2.5" fill="#E63946" opacity="0.4" />
+        <path d="M50 54 L47 57 H53 Z" fill="#E63946" />
+        <path d="M45 60 Q50 63 50 60 Q50 63 55 60" fill="none" stroke="#4A3B32" stroke-width="2.5" stroke-linecap="round" />
+      </svg>`,
+      // Template 4: Pink Princess Cat
+      `<svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+        <path d="M20 40 L10 15 L38 28 Z" fill="#FBC4AB" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M80 40 L90 15 L62 28 Z" fill="#FBC4AB" stroke="#4A3B32" stroke-width="3" stroke-linejoin="round" />
+        <path d="M23 37 L16 20 L33 28 Z" fill="#F08080" />
+        <path d="M77 37 L84 20 L67 28 Z" fill="#F08080" />
+        <ellipse cx="50" cy="52" rx="38" ry="30" fill="#FFDAB9" stroke="#4A3B32" stroke-width="3" />
+        <path d="M29 49 Q35 54 41 49" fill="none" stroke="#4A3B32" stroke-width="3" stroke-linecap="round" />
+        <path d="M59 49 Q65 54 71 49" fill="none" stroke="#4A3B32" stroke-width="3" stroke-linecap="round" />
+        <ellipse cx="26" cy="55" rx="7" ry="4" fill="#F08080" opacity="0.6" />
+        <ellipse cx="74" cy="55" rx="7" ry="4" fill="#F08080" opacity="0.6" />
+        <path d="M42 22 L45 14 L50 18 L55 14 L58 22 Z" fill="#FFD700" stroke="#4A3B32" stroke-width="1.5" />
+        <path d="M50 52 L47 55 H53 Z" fill="#F08080" />
+        <path d="M45 58 Q50 61 50 58 Q50 61 55 58" fill="none" stroke="#4A3B32" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="16" y1="52" x2="5" y2="50" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="16" y1="57" x2="3" y2="58" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="84" y1="52" x2="95" y2="50" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+        <line x1="84" y1="57" x2="97" y2="58" stroke="#4A3B32" stroke-width="2" stroke-linecap="round" />
+      </svg>`
+    ];
+
+    function initFloatingCats() {
+      const container = document.getElementById('landingCatContainer');
+      if (!container) return;
+      
+      // Clean up any existing cats first (useful for restarts)
+      container.innerHTML = '';
+      
+      const CAT_COUNT = 8;
+      for (let i = 0; i < CAT_COUNT; i++) {
+        const cat = document.createElement('div');
+        cat.className = 'cat-face';
+        
+        // Select random template
+        const randomIdx = Math.floor(Math.random() * CAT_TEMPLATES.length);
+        cat.innerHTML = CAT_TEMPLATES[randomIdx];
+        
+        // Random size
+        const size = Math.random() * 40 + 70; // 70px to 110px
+        cat.style.width = `${size}px`;
+        cat.style.height = `${size}px`;
+        
+        // Horizontal positioning
+        cat.style.left = `${Math.random() * 90 + 5}%`;
+        
+        // Random animation duration
+        const duration = Math.random() * 6 + 10; // 10s to 16s
+        cat.style.animationDuration = `${duration}s`;
+        
+        // Scatter them vertically at startup so they don't all rise together
+        const delay = -Math.random() * duration;
+        cat.style.animationDelay = `${delay}s`;
+        
+        container.appendChild(cat);
+      }
     }
 
     // ─────────────────────────────────────────────────────────
@@ -770,6 +941,7 @@
                          'July','August','September','October','November','December'];
 
     function initForm() {
+      initFloatingCats(); // Start the cute cats floating!
       const nameInput       = document.getElementById('nameInput');
       const dateInput       = document.getElementById('dateInput');
       const userNameDisplay = document.getElementById('userNameDisplay');
@@ -811,7 +983,9 @@
         const dateStr = dateInput.value;
         if (!dateStr) { alert('Please pick a birthday date.'); return; }
 
-        const bdayInput = new Date(dateStr);
+        // Parse as local date to avoid UTC timezone shift (off-by-one day bug)
+        const [_y, _m, _d] = dateStr.split('-').map(Number);
+        const bdayInput = new Date(_y, _m - 1, _d);
         const today     = getToday();
         let targetYear  = today.getFullYear();
         if (new Date(targetYear, bdayInput.getMonth(), bdayInput.getDate()) < today) targetYear++;
@@ -823,6 +997,7 @@
         const currentSession = window.appState.animationSession;
 
         document.getElementById('landingScreen').classList.add('hidden');
+        document.getElementById('landingCatContainer').classList.add('hidden');
         document.getElementById('calendarScreen').classList.remove('hidden');
         document.getElementById('wishBox').classList.add('hidden');
         if (window.particlesResize) window.particlesResize();

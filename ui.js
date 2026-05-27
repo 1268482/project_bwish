@@ -32,7 +32,9 @@ function initForm() {
       alert('Please pick a birthday date.');
       return;
     }
-    const birthday = new Date(dateStr);
+    // Parse date string as local date to avoid timezone shift
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const birthday = new Date(year, month - 1, day);
     // store name
     window.appState.userName = name;
     userNameDisplay.textContent = name;
