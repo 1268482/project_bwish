@@ -22,11 +22,11 @@
   <div id="app">
     <!-- Landing / input screen -->
     <section class="landing" id="landingScreen">
-      <h1>Welcome, <span id="userNameDisplay">Mano</span>!</h1>
+      <h1>Welcome, <span id="userNameDisplay"></span>!</h1>
       <p>Enter your birthday to begin the magical time travel.</p>
       <form id="birthForm" class="birth-form">
         <label for="nameInput">Name</label>
-        <input type="text" id="nameInput" placeholder="Your name" value="Mano" required />
+        <input type="text" id="nameInput" placeholder="Your name" required />
         <label for="dateInput">Birthday</label>
         <input type="date" id="dateInput" required />
         <button type="button" id="startBtn">✨ Start Journey</button>
@@ -727,7 +727,7 @@
     // ─────────────────────────────────────────────────────────
     //  APP STATE
     // ─────────────────────────────────────────────────────────
-    window.appState = { userName: 'Mano', animationSession: 0, currentHandPos: null };
+    window.appState = { userName: '', animationSession: 0, currentHandPos: null };
 
     function getCenter(el) {
       const parent   = document.getElementById('calendarScreen');
@@ -779,7 +779,7 @@
     function showWish() {
       const wishBox = document.getElementById('wishBox');
       if (!wishBox) return;
-      const name = window.appState.userName || 'Mano';
+      const name = window.appState.userName || '';
       wishBox.innerHTML = `
         <div class="wish-card">
           <h2 class="wish-title">Happy Birthday, ${name}! 🎂✨</h2>
@@ -968,7 +968,7 @@
 
 
       nameInput.addEventListener('input', () => {
-        const val = nameInput.value.trim() || 'Mano';
+        const val = nameInput.value.trim() || '';
         userNameDisplay.textContent = val;
         window.appState.userName = val;
       });
